@@ -1,36 +1,33 @@
 import React, {Component} from 'react';
-import PropTypes from 'prop-types';
 import {
   Dimensions,
   StyleSheet,
   View,
-  ScrollView,
-  Animated,
-  ImageBackground,
+  // Animated,
 } from 'react-native';
+
+import Animated, {interpolate} from 'react-native-reanimated';
+import {onScrollEvent} from 'react-native-redash';
+
 const screen = Dimensions.get('window');
-const ScrollViewPropTypes = ScrollView.propTypes;
+// const ScrollViewPropTypes = ScrollView.propTypes;
 
 export default class ParallaxView extends Component {
   constructor(props) {
     super(props);
-    const scrollY = new Animated.Value(0);
-    this.state = {
-      scrollY,
-      onScroll: Animated.event([{nativeEvent: {contentOffset: {y: scrollY}}}]),
-    };
+    this.scrollY = new Animated.Value(0);
   }
 
-  getScrollResponder() {
-    return this._scrollView.getScrollResponder();
-  }
+  // getScrollResponder() {
+  //   return this._scrollView.getScrollResponder();
+  // }
 
-  setNativeProps(props) {
-    this._scrollView.setNativeProps(props);
-  }
+  // setNativeProps(props) {
+  //   this._scrollView.setNativeProps(props);
+  // }
 
   renderBackground() {
-    const {windowHeight, backgroundSource, backgroundStyle, miniBlur, maxBlur} = this.props;
+    const {windowHeight, headerHeight, backgroundSource, backgroundStyle, miniBlur, maxBlur, animatedScrollValue} = this.props;
     if (!windowHeight || !backgroundSource) {
       return null;
     }
@@ -38,29 +35,40 @@ export default class ParallaxView extends Component {
     return (
       <Animated.Image
         style={[
-          getAnimateViewStyle(this.state.scrollY, windowHeight).background,
+          getAnimateViewStyle(animatedScrollValue || this.scrollY, windowHeight, headerHeight).background,
           backgroundStyle,
+          {backgroundColor: 'red',height: windowHeight, width: '100%'}
         ]}
-        blurRadius={getImageBlur(this.state.scrollY, miniBlur || 0,maxBlur || 0)}
+        blurRadius={getImageBlur(animatedScrollValue || this.scrollY, miniBlur || 0, maxBlur || 0)}
         source={backgroundSource}
       />
     );
   }
 
   renderHeader() {
-    const {windowHeight, backgroundSource, headerStyle} = this.props;
+    const {windowHeight, headerHeight, backgroundSource, headerStyle, animatedScrollValue} = this.props;
     if (!windowHeight || !backgroundSource) {
       return null;
     }
     return (
       <Animated.View
         style={[
-          getAnimateViewStyle(this.state.scrollY, windowHeight).header,
+          getAnimateViewStyle(animatedScrollValue || this.scrollY, windowHeight, headerHeight).header,
           headerStyle,
         ]}>
         {this.props.header}
       </Animated.View>
     );
+  }
+
+  renderFixedHeader() {
+    const {renderFixedHeader, headerHeight, animatedScrollValue} = this.props;
+    if (!renderFixedHeader) return null;
+    return (
+      <View style={{zIndex: 2, width: '100%', height: headerHeight}}>
+        {renderFixedHeader(animatedScrollValue || this.scrollY)}
+      </View>
+    )
   }
 
   onScrollEndDrag(e) {
@@ -71,61 +79,58 @@ export default class ParallaxView extends Component {
   }
 
   render() {
-    const {style} = this.props;
-    const onScroll = this.props.onScroll
-      ? e => {
-          this.props.onScroll(e);
-          this.state.onScroll(e);
-        }
-      : this.state.onScroll;
+    const {style, animatedScrollValue, scrollRef} = this.props;
     return (
       <View style={[styles.container, style]}>
+        {this.renderFixedHeader()}
         {this.renderBackground()}
-        <ScrollView
-          ref={component => {
-            this._scrollView = component;
-          }}
+        <Animated.ScrollView
+          // ref={component => {
+          //   this._scrollView = component;
+          // }}
           {...this.props}
+          ref={scrollRef}
           style={styles.scrollView}
-          onScroll={onScroll}
-          onScrollEndDrag={(e) => {this.onScrollEndDrag(e)}}
-          scrollEventThrottle={16}>
-          {this.renderHeader()}
-          <View style={[styles.content, this.props.scrollableViewStyle]}>
+          onScroll={onScrollEvent({y: animatedScrollValue || this.scrollY})
+            }
+          // onScrollEndDrag={(e) => {this.onScrollEndDrag(e)}}
+          scrollEventThrottle={1}
+          >
+            {this.renderHeader()}
             {this.props.children}
-          </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </View>
     );
   }
 }
 
-ParallaxView.propTypes = {
-  ...ScrollViewPropTypes,
-  windowHeight: PropTypes.number,
-  backgroundStyle: PropTypes.object,
-  refreshControl: PropTypes.object,
-  backgroundSource: PropTypes.oneOfType([
-    PropTypes.shape({
-      uri: PropTypes.string,
-    }),
-    PropTypes.number,
-  ]),
-  header: PropTypes.node,
-  contentInset: PropTypes.object,
-};
+// ParallaxView.propTypes = {
+//   ...ScrollViewPropTypes,
+//   windowHeight: PropTypes.number,
+//   backgroundStyle: PropTypes.object,
+//   refreshControl: PropTypes.object,
+//   backgroundSource: PropTypes.oneOfType([
+//     PropTypes.shape({
+//       uri: PropTypes.string,
+//     }),
+//     PropTypes.number,
+//   ]),
+//   header: PropTypes.node,
+//   contentInset: PropTypes.object,
+// };
 
 ParallaxView.defaultProps = {
   windowHeight: 300,
+  headerHeight: 0,
   contentInset: {top: screen.scale},
 };
 
-const getAnimateViewStyle = (scrollY, windowHeight) => {
+const getAnimateViewStyle = (scrollY, windowHeight, headerHeight) => {
   return {
     header: {
       position: 'relative',
-      height: windowHeight,
-      opacity: scrollY.interpolate({
+      height: windowHeight - headerHeight,
+      opacity: interpolate(scrollY, {
         inputRange: [-windowHeight, 0, windowHeight / 1.2],
         outputRange: [1, 1, 0],
       }),
@@ -134,13 +139,13 @@ const getAnimateViewStyle = (scrollY, windowHeight) => {
       position: 'absolute',
       transform: [
         {
-          translateY: scrollY.interpolate({
+          translateY: interpolate(scrollY, {
             inputRange: [-windowHeight, 0, windowHeight],
-            outputRange: [windowHeight / 2, 0, -windowHeight / 3],
+            outputRange: [windowHeight / 2, 0, -windowHeight / 2],
           }),
         },
         {
-          scale: scrollY.interpolate({
+          scale: interpolate(scrollY, {
             inputRange: [-windowHeight, 0, windowHeight],
             outputRange: [2, 1, 1],
           }),
@@ -151,7 +156,7 @@ const getAnimateViewStyle = (scrollY, windowHeight) => {
 };
 
 const getImageBlur = (scrollY, miniBlur, maxBlur) => {
-  return scrollY.interpolate({
+  return interpolate(scrollY, {
     inputRange: [-miniBlur, 0, maxBlur],
     outputRange: [miniBlur, 0, -maxBlur],
   })
@@ -163,6 +168,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   scrollView: {
+    flex: 1,
     backgroundColor: 'transparent',
   },
   background: {
@@ -172,11 +178,9 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   content: {
-    shadowColor: '#222',
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    backgroundColor: '#fff',
     flex: 1,
+    backgroundColor: '#fff',
     flexDirection: 'column',
   },
 });
+
